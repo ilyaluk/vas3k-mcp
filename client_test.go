@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -37,6 +38,8 @@ func TestDocumentedReadRoutes(t *testing.T) {
 		{"get_feed", `{}`, "/feed.json", "page=1", `{"items":[]}`},
 		{"get_feed", `{"post_type":"request","ordering":"top_week","page":2}`, "/request/top_week/feed.json", "page=2", `{"items":[]}`},
 		{"search_users", `{"prefix":"abc"}`, "/search/users.json", "prefix=abc", `{"users":[]}`},
+		{"search_posts", `{"query":" Go "}`, "/search/posts.json", "ordering=-rank&page=1&q=Go", `{"query":"Go","type":"post","ordering":"-rank","page":1,"pages":1,"results":[]}`},
+		{"search_posts", `{"query":"C++ & Go? #тест","ordering":"-created_at","page":2}`, "/search/posts.json", "ordering=-created_at&page=2&q=C%2B%2B+%26+Go%3F+%23%D1%82%D0%B5%D1%81%D1%82", `{"results":[]}`},
 		{"search_tags", `{"prefix":"C++","group":"tech"}`, "/search/tags.json", "group=tech&prefix=C%2B%2B", `{"tags":[]}`},
 	}
 	for _, tt := range cases {
@@ -80,6 +83,12 @@ func TestValidationBeforeUpstream(t *testing.T) {
 		{"find_user_by_telegram", `{"telegram_id":"1?service_token=bad"}`},
 		{"search_users", `{"prefix":"ab"}`}, {"search_users", `{"prefix":"123456789012345"}`},
 		{"search_tags", `{"group":"invented"}`}, {"search_tags", `{"prefix":"a"}`},
+		{"search_posts", `{}`}, {"search_posts", `{"query":" \n\t "}`},
+		{"search_posts", `{"query":123}`}, {"search_posts", `{"query":"ok","page":0}`},
+		{"search_posts", `{"query":"ok","page":-1}`}, {"search_posts", `{"query":"ok","page":10001}`},
+		{"search_posts", `{"query":"ok","page":1.5}`}, {"search_posts", `{"query":"ok","ordering":"new"}`},
+		{"search_posts", `{"query":"ok","url":"https://evil.invalid"}`},
+		{"search_posts", `{"query":"` + strings.Repeat("я", 1001) + `"}`},
 		{"bookmark_post", `{}`}, {"get_user", `null`}, {"get_user", `[]`},
 	} {
 		if _, err := c.call(context.Background(), "st_fake", tt.name, json.RawMessage(tt.args)); err == nil {
@@ -105,6 +114,7 @@ func TestOutputAllowlist(t *testing.T) {
 		{"list_post_comments", `{"post_type":"post","slug":"1"}`, `{"comments":[{"text":"Safe","private":"SECRET","author":{"email":"SECRET"}}]}`},
 		{"search_users", `{"prefix":"abc"}`, `{"users":[{"slug":"Safe","private":"SECRET"}]}`},
 		{"search_tags", `{}`, `{"tags":[{"code":"Safe","private":"SECRET"}]}`},
+		{"search_posts", `{"query":"abc"}`, `{"private":"SECRET","results":[{"type":"post","private":"SECRET","user":{"email":"SECRET"},"post":{"title":"Safe","private":"SECRET","authors":[{"name":"Safe","email":"SECRET"}],"_club":{"private":"SECRET"}}}]}`},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -201,5 +211,66 @@ func TestFeedPreview(t *testing.T) {
 	p := got.(feedResponse).Items[0]
 	if len([]rune(p.ContentText)) != 1000 || !p.Club.ContentTruncated || p.Club.ContentFullChars != 1001 {
 		t.Fatalf("bad preview: %+v", p.Club)
+	}
+}
+
+func TestSearchPostsPreviewsAndPagination(t *testing.T) {
+	for _, size := range []int{0, 1000, 1001} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			text := strings.Repeat("界", size)
+			c := mockClub(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(searchPostsResponse{
+					Query: "界", Type: "post", Ordering: "-upvotes", Page: 2, Pages: 3,
+					Results: []postMatch{{Type: "post", Post: Post{
+						Title: "Title", ContentText: text,
+						Club: postInfo{Type: "question", Slug: "42", ContentTruncated: true, ContentFullChars: 9999},
+					}}},
+				})
+			})
+			got, err := c.call(context.Background(), "st_fake", "search_posts", json.RawMessage(`{"query":"界","ordering":"-upvotes","page":2}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := got.(searchPostsResponse)
+			if r.Page != 2 || r.Pages != 3 || r.Query != "界" || r.Ordering != "-upvotes" || len(r.Results) != 1 {
+				t.Fatalf("metadata: %+v", r)
+			}
+			p := r.Results[0].Post
+			if p.Title != "Title" || p.Club.Slug != "42" || p.Club.Type != "question" {
+				t.Fatalf("lost post metadata: %+v", p)
+			}
+			if size > 1000 {
+				if p.ContentText != strings.Repeat("界", 1000) || !p.Club.ContentTruncated || p.Club.ContentFullChars != size {
+					t.Fatal("invalid truncated preview")
+				}
+			} else if p.ContentText != text || p.Club.ContentTruncated || p.Club.ContentFullChars != 0 {
+				t.Fatal("invalid untruncated preview")
+			}
+		})
+	}
+}
+
+func TestSearchPostsCollectionLimit(t *testing.T) {
+	c := mockClub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"results":[`+strings.Repeat(`{},`, maxItems)+`{}]}`)
+	})
+	if _, err := c.call(context.Background(), "st_fake", "search_posts", json.RawMessage(`{"query":"go"}`)); err == nil || !strings.Contains(err.Error(), "1000 items") {
+		t.Fatalf("expected item limit, got %v", err)
+	}
+}
+
+func TestSearchPostsThroughMCP(t *testing.T) {
+	c := mockClub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"query":"go","type":"post","page":1,"pages":1,"results":[{"type":"post","post":{"title":"Found"}}]}`)
+	})
+	h := newMCPHandler(readTools(), func(ctx context.Context, name string, args json.RawMessage) (any, error) {
+		return c.call(ctx, "st_fake", name, args)
+	})
+	w := mcpTestRequest(h, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_posts","arguments":{"query":"go"}}}`)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Found") || strings.Contains(w.Body.String(), `"isError":true`) {
+		t.Fatalf("search failed: %s", w.Body.String())
 	}
 }

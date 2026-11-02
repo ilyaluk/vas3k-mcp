@@ -57,7 +57,7 @@ func TestAppSetupAndCredentialIsolation(t *testing.T) {
 	}
 	result := rpc("tools/list", map[string]any{})
 	listed := result["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 12 {
+	if len(listed) != 13 {
 		t.Fatalf("%d tools", len(listed))
 	}
 	for _, tool := range listed {

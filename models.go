@@ -128,6 +128,18 @@ type userMatch struct {
 type searchUsersResponse struct {
 	Users []userMatch `json:"users"`
 }
+type postMatch struct {
+	Type string `json:"type"`
+	Post Post   `json:"post"`
+}
+type searchPostsResponse struct {
+	Query    string      `json:"query"`
+	Type     string      `json:"type"`
+	Ordering string      `json:"ordering"`
+	Page     int         `json:"page"`
+	Pages    int         `json:"pages"`
+	Results  []postMatch `json:"results"`
+}
 type tagMatch struct {
 	Code  string `json:"code"`
 	Name  string `json:"name"`

@@ -18,7 +18,7 @@ session persistence, or resumable event streams.
 Supported initialize-based protocol revisions are **2025-11-25**,
 **2025-06-18**, and **2025-03-26**; this is not a claim of latest-spec support.
 
-All 12 original read tools are available:
+All 12 original read tools plus post search are available (13 total):
 
 | Tool | Reads |
 | --- | --- |
@@ -32,18 +32,42 @@ All 12 original read tools are available:
 | `get_post_markdown` | Post Markdown |
 | `list_post_comments` | Post comments |
 | `get_feed` | Filtered/ordered feed |
+| `search_posts` | Full-text post search with pagination and sorting |
 | `search_users` | Username-prefix search |
 | `search_tags` | Tag search |
 
 Their upstream endpoints and service-token authentication are documented in
-the club's [`templates/openid/list_apps.html`][club-api], pinned at
+the club's [`templates/openid/list_apps.html`][club-api] and
+[`search/api.py`][club-search], pinned at
 `e35d73be53f6a12c0bf40c3522999e655740dc3b`. Other club API features are
 deliberately not exposed.
 Private contact email/Telegram fields are deliberately omitted from profiles.
-Feed previews are capped at 1,000 Unicode characters with explicit truncation
+Feed and search previews are capped at 1,000 Unicode characters with explicit truncation
 flags; Markdown is the raw title/text, not rendered HTML. Upstream requests
 time out after 15 seconds, with response limits of 4 MiB for JSON and 1 MiB
 for Markdown, and a maximum of 1,000 collection items.
+
+### Search posts
+
+Call `search_posts` with a required, nonblank `query` (up to 1,000 Unicode
+characters after trimming whitespace):
+
+```json
+{"query": "golang", "ordering": "-rank", "page": 1}
+```
+
+`ordering` defaults to `-rank` (relevance); alternatives are `-upvotes`,
+`-created_at` (newest first), and `created_at` (oldest first). `page` defaults
+to 1 and accepts 1–10,000. The read-only request uses
+`GET /search/posts.json?q=...&ordering=...&page=...` with the stored service token.
+Upstream post search excludes intros, drafts, and deleted posts.
+
+The response includes `query`, `type`, `ordering`, `page`, `pages`, and
+`results`, where each result contains `type` and `post`. Retain the query and
+ordering when requesting subsequent pages; stop when returned `page >= pages`
+(upstream may clamp out-of-range pages). For truncated bodies, call `get_post`
+or `get_post_markdown` using the returned post's `_club.type` and `_club.slug`.
+Search is server-side full-text search, not a scan of recent feed pages.
 
 ## Build and run
 
@@ -177,7 +201,7 @@ Do not create a service user: the unit uses DynamicUser and a persistent
 StateDirectory. Install the binary to /usr/local/bin/vas3k-mcp and
 deploy/vas3k-mcp.service to /etc/systemd/system/vas3k-mcp.service.
 Reload systemd, enable/start vas3k-mcp.service, check status and local GET /,
-and confirm a stateless MCP initialize/tools/list exposes exactly 12 reads.
+and confirm a stateless MCP initialize/tools/list exposes exactly 13 reads.
 Do not call the live club API or configure credentials on my behalf.
 Use this VM's actual name in all URLs and tell me to open
 https://<vm>.exe.xyz/ in my browser to paste the club service token there.
@@ -190,6 +214,7 @@ Documentation verified **November 2, 2026**.
 
 [original]: https://github.com/uburuntu/vas3k-mcp
 [club-api]: https://github.com/vas3k/vas3k.club/blob/e35d73be53f6a12c0bf40c3522999e655740dc3b/templates/openid/list_apps.html
+[club-search]: https://github.com/vas3k/vas3k.club/blob/e35d73be53f6a12c0bf40c3522999e655740dc3b/search/api.py
 [club-form]: https://github.com/vas3k/vas3k.club/blob/e35d73be53f6a12c0bf40c3522999e655740dc3b/authn/forms.py
 [exe-tokens]: https://exe.dev/docs/https-tokens-for-vms
 [exe-proxy]: https://exe.dev/docs/proxy#reverse-proxy-headers

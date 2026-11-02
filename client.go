@@ -25,6 +25,7 @@ var slugPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 var telegramPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
 var postTypes = []string{"post", "intro", "link", "question", "request", "project", "event", "battle", "weekly_digest", "guide", "thread", "docs"}
 var orderings = []string{"activity", "new", "top", "top_week", "top_month", "top_year", "hot"}
+var searchOrderings = []string{"-rank", "-upvotes", "-created_at", "created_at"}
 var groups = []string{"club", "tech", "hobbies", "personal", "collectible", "other"}
 
 func contains(values []string, s string) bool {
@@ -173,6 +174,11 @@ type feedArgs struct {
 type userSearchArgs struct {
 	Prefix string `json:"prefix"`
 }
+type postSearchArgs struct {
+	Query    string `json:"query"`
+	Ordering string `json:"ordering"`
+	Page     *int   `json:"page"`
+}
 type tagSearchArgs struct {
 	Prefix string `json:"prefix"`
 	Group  string `json:"group"`
@@ -300,12 +306,36 @@ func (c *clubClient) call(ctx context.Context, token, name string, raw json.RawM
 		}
 		for i := range r.Items {
 			p := &r.Items[i]
-			chars := []rune(p.ContentText)
-			if len(chars) > 1000 {
-				p.ContentText = string(chars[:1000])
-				p.Club.ContentTruncated = true
-				p.Club.ContentFullChars = len(chars)
-			}
+			previewPost(p)
+		}
+		return r, e
+	case "search_posts":
+		var a postSearchArgs
+		if err := decodeArgs(raw, &a); err != nil {
+			return nil, err
+		}
+		a.Query = strings.TrimSpace(a.Query)
+		if n := utf8.RuneCountInString(a.Query); n < 1 || n > 1000 {
+			return nil, errors.New("query must be 1-1000 characters after trimming whitespace")
+		}
+		if a.Ordering == "" {
+			a.Ordering = "-rank"
+		}
+		page := 1
+		if a.Page != nil {
+			page = *a.Page
+		}
+		if !contains(searchOrderings, a.Ordering) || page < 1 || page > 10000 {
+			return nil, errors.New("invalid search ordering or page (1-10000)")
+		}
+		r, e := getJSON[searchPostsResponse](ctx, c, token, "/search/posts.json", url.Values{
+			"q": {a.Query}, "ordering": {a.Ordering}, "page": {fmt.Sprint(page)},
+		})
+		if e == nil {
+			e = itemLimit(len(r.Results))
+		}
+		for i := range r.Results {
+			previewPost(&r.Results[i].Post)
 		}
 		return r, e
 	case "search_users":
@@ -344,5 +374,17 @@ func (c *clubClient) call(ctx context.Context, token, name string, raw json.RawM
 		return r, e
 	default:
 		return nil, errors.New("unknown read tool")
+	}
+}
+
+// Apply the same Unicode-safe preview policy to all post collections.
+func previewPost(p *Post) {
+	chars := []rune(p.ContentText)
+	// These fields are local metadata, not upstream claims.
+	p.Club.ContentTruncated = len(chars) > 1000
+	p.Club.ContentFullChars = 0
+	if p.Club.ContentTruncated {
+		p.ContentText = string(chars[:1000])
+		p.Club.ContentFullChars = len(chars)
 	}
 }

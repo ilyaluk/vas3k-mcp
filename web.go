@@ -182,7 +182,10 @@ func newWebHandler(s *store, me func(context.Context, string) (User, error), sta
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Referrer-Policy", "no-referrer")
+		// no-referrer makes browsers send Origin: null for form navigations,
+		// even to this same page. Preserve same-origin form Origins while
+		// still suppressing referrers to other sites.
+		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)

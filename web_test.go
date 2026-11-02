@@ -21,9 +21,11 @@ func TestSameOrigin(t *testing.T) {
 	}{
 		{name: "missing"},
 		{name: "matching", origin: "http://club.test", want: true},
+		{name: "browser form", origin: "http://club.test", fetch: "same-origin", want: true},
 		{name: "same origin fetch only", fetch: "same-origin", want: true},
 		{name: "none fetch only", fetch: "none"},
 		{name: "opaque", origin: "null"},
+		{name: "opaque same origin fetch", origin: "null", fetch: "same-origin"},
 		{name: "cross site", origin: "http://evil.test"},
 		{name: "sibling", origin: "http://sibling.club.test"},
 		{name: "same site fetch", origin: "http://club.test", fetch: "same-site"},
@@ -108,7 +110,7 @@ func TestWebSetupAndSecurityHeaders(t *testing.T) {
 		}
 	}
 	for key, value := range map[string]string{
-		"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
+		"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin",
 	} {
 		if got := w.Header().Get(key); got != value {
 			t.Errorf("%s = %q", key, got)

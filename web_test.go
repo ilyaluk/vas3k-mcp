@@ -99,6 +99,8 @@ func TestWebSetupAndSecurityHeaders(t *testing.T) {
 	}
 	for _, text := range []string{
 		"https://vas3k.club/apps/create/", "redirect", `type="password"`,
+		"Only the name and description are required",
+		"Leave the website and redirect URI blank",
 		"Not configured", "http://club.test/mcp", "Not checked", version,
 	} {
 		if !strings.Contains(w.Body.String(), text) {

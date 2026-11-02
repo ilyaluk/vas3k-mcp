@@ -168,7 +168,7 @@ Never share either token.</p>
 </section>{{end}}
 <section><h2>{{if .Configured}}Replace token{{else}}Connect your account{{end}}</h2>
 <ol><li>Open <a href="https://vas3k.club/apps/create/" target="_blank" rel="noopener noreferrer">Create an app</a> on the club website.</li>
-<li>Give it a name such as “Personal MCP” and a short description. For the website URL, use any valid personal or project URL; it is not used by this server. If a redirect URL is required, any valid URL works (for example <code>https://example.com/</code>); this app does not use redirects.</li>
+<li>Only the name and description are required. Use a name such as “Personal MCP” and a short description. Leave the website and redirect URI blank; this server does not use redirects.</li>
 <li>Create the app and copy its service token (starting with <code>st_</code>) below. It is checked with the club before being saved.</li></ol>
 <form method="post" action="/"><input type="hidden" name="action" value="save">
 <label for="token">Service token</label><input id="token" type="password" name="token" maxlength="512" autocomplete="off" spellcheck="false" required>

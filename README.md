@@ -99,10 +99,9 @@ Open `https://<vm>.exe.xyz/` and sign into exe.dev. The setup page guides you:
 
 1. Open [club apps](https://vas3k.club/apps/) and
    [create your own app](https://vas3k.club/apps/create/).
-2. Supply a name (e.g. `My vas3k MCP`) and description. Website can be
-   `https://<vm>.exe.xyz/`; if filling the redirect URL, any valid URL such as
-   the same address is fine. These optional fields are unused by this port:
-   it does not perform OAuth or need a callback, client ID, or client secret.
+2. Supply a name (e.g. `My vas3k MCP`) and description—the only required fields.
+   Leave the website and redirect URI blank. This port does not perform OAuth
+   or need a callback, client ID, or client secret.
    See the [club app form][club-form].
 3. Copy the app's **service token** (`st_…`) into this VM's setup form, never
    into chat. The server verifies it using `GET /user/me.json` with

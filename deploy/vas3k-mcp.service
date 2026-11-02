@@ -5,8 +5,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=vas3k-mcp
-Group=vas3k-mcp
+DynamicUser=yes
 WorkingDirectory=/var/lib/vas3k-mcp
 StateDirectory=vas3k-mcp
 StateDirectoryMode=0700

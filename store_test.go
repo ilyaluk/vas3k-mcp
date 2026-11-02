@@ -207,3 +207,88 @@ func TestStoreConcurrent(t *testing.T) {
 		t.Fatalf("disk and memory disagree: %v", err)
 	}
 }
+
+func TestResolveStateDir(t *testing.T) {
+	base := t.TempDir()
+	actual := filepath.Join(base, "private", "state")
+	if err := os.MkdirAll(actual, 0755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "state")
+	if err := os.Symlink(actual, alias); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := resolveStateDir(alias)
+	if err != nil || dir != actual {
+		t.Fatalf("resolve systemd-style alias: %q, %v", dir, err)
+	}
+	lock, err := lockStateDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	s, err := openStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Replace("st_first"); err != nil {
+		t.Fatal(err)
+	}
+	// A runtime alias change must not move the store away from the locked
+	// directory or redirect replacement/forget operations.
+	other := filepath.Join(base, "other")
+	if err := os.Mkdir(other, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(other, alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Replace("st_replaced"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openStore(dir)
+	if err != nil || reopened.Token() != "st_replaced" {
+		t.Fatalf("canonical state lost: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(other, tokenFilename)); !os.IsNotExist(err) {
+		t.Fatal("replacement followed changed alias")
+	}
+	if err := s.Forget(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(actual, tokenFilename)); !os.IsNotExist(err) {
+		t.Fatal("forget did not use canonical directory")
+	}
+	info, err := os.Stat(actual)
+	if err != nil || info.Mode().Perm() != 0700 {
+		t.Fatalf("canonical directory not private: %v", err)
+	}
+	// A fresh startup follows the current operator-configured alias.
+	if dir, err := resolveStateDir(alias); err != nil || dir != other {
+		t.Fatalf("new startup: %q, %v", dir, err)
+	}
+}
+
+func TestResolveStateDirInvalid(t *testing.T) {
+	base := t.TempDir()
+	file := filepath.Join(base, "file")
+	if err := os.WriteFile(file, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	dangling := filepath.Join(base, "dangling")
+	if err := os.Symlink(filepath.Join(base, "missing"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{file, dangling} {
+		if _, err := resolveStateDir(path); err == nil {
+			t.Fatalf("accepted invalid state path: %s", path)
+		}
+	}
+	created := filepath.Join(base, "new", "state")
+	if dir, err := resolveStateDir(created); err != nil || dir != created {
+		t.Fatalf("create regular state directory: %q, %v", dir, err)
+	}
+}

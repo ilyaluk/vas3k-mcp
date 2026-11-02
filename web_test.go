@@ -348,6 +348,7 @@ func TestConfiguredClientGuide(t *testing.T) {
 		"ssh exe.dev ssh-key generate-api-key --vm=hammer-endgame --label=vas3k-claude --exp=90d",
 		"https://hammer-endgame.exe.xyz:8443/mcp", "No sign in", "Request headers", "limited beta",
 		"X-Exedev-Authorization", "Bearer &lt;token&gt;", "Authorization: Bearer &lt;token&gt;",
+		"HTTP Basic auth", "any username",
 		"claude mcp add --transport http --scope user vas3k", "mcpServers", "90 days", "revoke",
 		"server never generates", "proxy strips it",
 	} {

@@ -100,14 +100,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	dir, err := resolveStateDir(*stateDir)
+	if err != nil {
+		return err
+	}
 	// Linux advisory lock prevents two instances sharing one credential store.
 	// Its persistent inode is never removed, so restarts cannot split the lock.
-	lock, err := lockStateDir(*stateDir)
+	lock, err := lockStateDir(dir)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	s, err := openStore(*stateDir)
+	s, err := openStore(dir)
 	if err != nil {
 		return err
 	}

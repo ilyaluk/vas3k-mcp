@@ -149,10 +149,12 @@ code{overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font
 <p>This creates an <strong>exe.dev VM-scoped token</strong>, not a club service token.
 The server never generates it. With the preferred header below, the proxy strips it before it reaches this server.
 Do not paste it into the setup form.</p>
+<p><strong>Clients with HTTP Basic auth:</strong> use the MCP URL above, any username,
+and the VM token as the password. Use credential settings, not a token embedded in the URL.</p>
 <p><strong>claude.ai:</strong> add a custom connector with URL <code>{{.MCPURL}}</code>.
 Choose <strong>No sign in</strong> and the <strong>Request headers</strong> option (limited beta).
 Set <code>X-Exedev-Authorization</code> to <code>Bearer &lt;token&gt;</code>.
-Custom header names need Anthropic approval; alternatively use <code>Authorization: Bearer &lt;token&gt;</code>
+If that custom header name isn't available, use <code>Authorization: Bearer &lt;token&gt;</code>
 (exe.dev's deprecated fallback). The app never uses or stores either client header.</p>
 <p><strong>Claude Code</strong> (replace <code>&lt;token&gt;</code> locally):</p>
 <pre><code>{{.ClientCommand}}</code></pre>

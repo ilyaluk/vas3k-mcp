@@ -31,6 +31,28 @@ func validToken(token string) bool {
 	return true
 }
 
+// Resolve the operator-configured path once at startup. DynamicUser services
+// expose StateDirectory through a symlink to /var/lib/private. Pin its real
+// directory before locking/loading; never follow a replacement alias at runtime.
+// Credential and lock files must still be regular files, not symlinks.
+func resolveStateDir(dir string) (string, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	dir, err = filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", err
+	}
+	if err := privateDir(dir); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
 func privateDir(dir string) error {
 	info, err := os.Lstat(dir)
 	if err != nil {

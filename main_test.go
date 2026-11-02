@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -31,13 +33,14 @@ func TestAppSetupAndCredentialIsolation(t *testing.T) {
 	defer server.Close()
 	client := server.Client()
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	callerAuthorization := "Bearer CALLER_VM_TOKEN"
 	rpc := func(method string, params any) map[string]any {
 		t.Helper()
 		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 		req, _ := http.NewRequest("POST", server.URL+"/mcp", strings.NewReader(string(b)))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
-		req.Header.Set("Authorization", "Bearer CALLER_VM_TOKEN")
+		req.Header.Set("Authorization", callerAuthorization)
 		resp, e := client.Do(req)
 		if e != nil {
 			t.Fatal(e)
@@ -84,6 +87,11 @@ func TestAppSetupAndCredentialIsolation(t *testing.T) {
 	}
 	if hits.Load() != 2 {
 		t.Fatal("wrong request count")
+	}
+	callerAuthorization = "Basic dXNlcjpDQUxMRVJfVk1fVE9LRU4="
+	result = rpc("tools/call", map[string]any{"name": "get_me", "arguments": map[string]any{}})
+	if strings.Contains(fmt.Sprint(result), "CALLER_VM_TOKEN") || hits.Load() != 3 {
+		t.Fatal("Basic proxy credential was used instead of stored club token")
 	}
 	for _, method := range []string{"GET", "POST", "DELETE"} {
 		req, _ = http.NewRequest(method, server.URL+"/mcp-full", nil)
@@ -134,4 +142,22 @@ func TestStateLock(t *testing.T) {
 		t.Fatal("lock survived process close:", err)
 	}
 	next.Close()
+}
+
+func TestStateLockRejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(t.TempDir(), "outside-lock")
+	if err := os.WriteFile(target, []byte("unchanged"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, ".lock")); err != nil {
+		t.Fatal(err)
+	}
+	if lock, err := lockStateDir(dir); err == nil {
+		lock.Close()
+		t.Fatal("followed symlink lock")
+	}
+	if data, err := os.ReadFile(target); err != nil || string(data) != "unchanged" {
+		t.Fatal("symlink target changed")
+	}
 }

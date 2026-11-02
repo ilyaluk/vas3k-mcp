@@ -1,0 +1,39 @@
+[Unit]
+Description=Single-owner read-only vas3k.club MCP server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=vas3k-mcp
+Group=vas3k-mcp
+WorkingDirectory=/var/lib/vas3k-mcp
+StateDirectory=vas3k-mcp
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/local/bin/vas3k-mcp -listen 0.0.0.0:8000 -state-dir /var/lib/vas3k-mcp
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -23,17 +23,25 @@ type User struct {
 type userResponse struct {
 	User User `json:"user"`
 }
+
+// Pointers distinguish requested empty collections from unrequested sections.
+type getUserResponse struct {
+	User         *User          `json:"user,omitempty"`
+	Tags         *tagGroups     `json:"tags,omitempty"`
+	Badges       *[]badge       `json:"user_badges,omitempty"`
+	Achievements *[]achievement `json:"user_achievements,omitempty"`
+}
 type Tag struct {
 	Code string `json:"code"`
 	Name string `json:"name"`
 }
 type tagGroups struct {
-	Club        []Tag `json:"club,omitempty"`
-	Tech        []Tag `json:"tech,omitempty"`
-	Hobbies     []Tag `json:"hobbies,omitempty"`
-	Personal    []Tag `json:"personal,omitempty"`
-	Collectible []Tag `json:"collectible,omitempty"`
-	Other       []Tag `json:"other,omitempty"`
+	Club        []Tag `json:"club"`
+	Tech        []Tag `json:"tech"`
+	Hobbies     []Tag `json:"hobbies"`
+	Personal    []Tag `json:"personal"`
+	Collectible []Tag `json:"collectible"`
+	Other       []Tag `json:"other"`
 }
 type tagsResponse struct {
 	Tags tagGroups `json:"tags"`
@@ -101,13 +109,18 @@ type postResponse struct {
 	Post Post `json:"post"`
 }
 type comment struct {
-	ID        string  `json:"id"`
-	URL       string  `json:"url"`
-	Text      string  `json:"text"`
-	Author    User    `json:"author"`
-	ReplyToID *string `json:"reply_to_id"`
-	Upvotes   int     `json:"upvotes"`
-	CreatedAt string  `json:"created_at"`
+	ID        string          `json:"id"`
+	URL       string          `json:"url"`
+	Text      string          `json:"text"`
+	Author    User            `json:"author"`
+	ReplyToID *string         `json:"reply_to_id"`
+	Upvotes   int             `json:"upvotes"`
+	CreatedAt string          `json:"created_at"`
+	Club      *contentPreview `json:"_club,omitempty"`
+}
+type contentPreview struct {
+	ContentTruncated bool `json:"content_truncated,omitempty"`
+	ContentFullChars int  `json:"content_full_chars,omitempty"`
 }
 type commentsResponse struct {
 	Comments []comment `json:"comments"`
@@ -128,17 +141,19 @@ type userMatch struct {
 type searchUsersResponse struct {
 	Users []userMatch `json:"users"`
 }
-type postMatch struct {
-	Type string `json:"type"`
-	Post Post   `json:"post"`
+type searchResult struct {
+	Type    string   `json:"type"`
+	Post    *Post    `json:"post,omitempty"`
+	Comment *comment `json:"comment,omitempty"`
+	User    *User    `json:"user,omitempty"`
 }
-type searchPostsResponse struct {
-	Query    string      `json:"query"`
-	Type     string      `json:"type"`
-	Ordering string      `json:"ordering"`
-	Page     int         `json:"page"`
-	Pages    int         `json:"pages"`
-	Results  []postMatch `json:"results"`
+type searchResponse struct {
+	Query    string         `json:"query"`
+	Type     *string        `json:"type"`
+	Ordering string         `json:"ordering"`
+	Page     int            `json:"page"`
+	Pages    int            `json:"pages"`
+	Results  []searchResult `json:"results"`
 }
 type tagMatch struct {
 	Code  string `json:"code"`

@@ -18,23 +18,15 @@ session persistence, or resumable event streams.
 Supported initialize-based protocol revisions are **2025-11-25**,
 **2025-06-18**, and **2025-03-26**; this is not a claim of latest-spec support.
 
-All 12 original read tools plus post search are available (13 total):
+Five read tools cover the original reads plus full-text search:
 
 | Tool | Reads |
 | --- | --- |
-| `get_me` | Owner's profile |
-| `get_user` | Profile by club username |
-| `get_user_tags` | Profile tags |
-| `get_user_badges` | Received badges |
-| `get_user_achievements` | Achievements |
-| `find_user_by_telegram` | Profile by numeric Telegram ID |
-| `get_post` | Post JSON |
-| `get_post_markdown` | Post Markdown |
-| `list_post_comments` | Post comments |
+| `get_user` | Self/member profile and selected tags, badges, achievements; slug or Telegram ID lookup |
+| `get_post` | Full post as JSON or Markdown |
+| `list_post_comments` | Full comments, independently of the post body |
 | `get_feed` | Filtered/ordered feed |
-| `search_posts` | Full-text post search with pagination and sorting |
-| `search_users` | Username-prefix search |
-| `search_tags` | Tag search |
+| `search` | Full-text posts/comments/users, username autocomplete, or tags |
 
 Their upstream endpoints and service-token authentication are documented in
 the club's [`templates/openid/list_apps.html`][club-api] and
@@ -47,27 +39,86 @@ flags; Markdown is the raw title/text, not rendered HTML. Upstream requests
 time out after 15 seconds, with response limits of 4 MiB for JSON and 1 MiB
 for Markdown, and a maximum of 1,000 collection items.
 
-### Search posts
+### Search
 
-Call `search_posts` with a required, nonblank `query` (up to 1,000 Unicode
-characters after trimming whitespace):
+One `search` tool covers these modes; `scope` defaults to `all`:
+
+| Arguments | Behavior |
+| --- | --- |
+| `{"query":"golang"}` | Full-text search across posts, comments, and users |
+| `{"scope":"posts","query":"golang"}` | Posts only (upstream excludes intros) |
+| `{"scope":"comments","query":"golang"}` | Comments only |
+| `{"scope":"users","query":"engineer"}` | Full-text member search, not just usernames |
+| `{"scope":"users","prefix":"vas"}` | Username autocomplete: 3–14 characters, up to 25 matches, most recently active first |
+| `{"scope":"tags","query":"gol","group":"tech"}` | Tag-name substring (3–15 characters) and/or group; both optional |
+
+Full-text queries must be nonblank and at most 1,000 Unicode characters after
+trimming whitespace. They accept `ordering`: `-rank` (default, relevance),
+`-upvotes`, `-created_at` (newest first), or `created_at` (oldest first), and
+`page` (default 1, range 1–10,000). Query syntax is passed through, including
+`author:vas3k`, `title:…`, `since:2024`, `until:2024-03-09`, phrases, `AND`/`OR`.
+
+Full-text results include `query`, `type` (null for all), `ordering`, `page`,
+`pages`, and `results` containing typed `post`, `comment`, or `user` objects.
+Post/comment text is previewed at 1,000 Unicode characters, with locally computed
+`_club.content_truncated` and `_club.content_full_chars` markers when truncated.
+Use `get_post` for full post text or `list_post_comments` for full comments;
+search results retain post `_club.type`/`slug` and comment URLs/IDs.
+Retain query, scope, and ordering when paging; stop at returned `page >= pages`
+(upstream may clamp out-of-range pages).
+
+Username autocomplete returns `{users:[…]}` and tag search returns `{tags:[…]}`.
+Autocomplete cannot combine `query` with `prefix`. `prefix` is only for users;
+`group` is only for tags. Autocomplete/tag modes reject `page` and `ordering`,
+rather than silently ignore them. Tag search is capped at 1,000 items.
+
+Full-text search uses `/search.json` (with a type filter for users/comments),
+and `/search/posts.json` for posts. Member full-text search deliberately uses
+the generic, paginated user search rather than the compact, activity-sorted
+25-result `/search/users.json?q=…` variant. Autocomplete uses
+`/search/users.json?prefix=…`; tags use `/search/tags.json`.
+
+### Fetching members and posts
+
+`get_user` defaults to the owner (`slug: "me"`) and `include: ["profile"]`.
+Choose any nonempty, duplicate-free subset of `profile`, `tags`, `badges`,
+`achievements`. Only requested sections are returned; slug-based extras-only
+requests avoid downloading the profile. For example:
 
 ```json
-{"query": "golang", "ordering": "-rank", "page": 1}
+{"slug":"vas3k","include":["profile","tags"]}
 ```
 
-`ordering` defaults to `-rank` (relevance); alternatives are `-upvotes`,
-`-created_at` (newest first), and `created_at` (oldest first). `page` defaults
-to 1 and accepts 1–10,000. The read-only request uses
-`GET /search/posts.json?q=...&ordering=...&page=...` with the stored service token.
-Upstream post search excludes intros, drafts, and deleted posts.
+Use `telegram_id` **instead of** `slug` for numeric Telegram lookup. When
+extras are requested, the client resolves the member's slug first. Profile
+results use `user`, with optional `tags`, `user_badges`, `user_achievements`
+keys. A failed section fails the whole call; no incomplete success is returned.
 
-The response includes `query`, `type`, `ordering`, `page`, `pages`, and
-`results`, where each result contains `type` and `post`. Retain the query and
-ordering when requesting subsequent pages; stop when returned `page >= pages`
-(upstream may clamp out-of-range pages). For truncated bodies, call `get_post`
-or `get_post_markdown` using the returned post's `_club.type` and `_club.slug`.
-Search is server-side full-text search, not a scan of recent feed pages.
+`get_post` requires `post_type` and `slug`. `format` defaults to `json`
+(`{post:…}`); `format: "markdown"` returns `{markdown:…}`. Comments stay a
+separate tool to avoid fetching a potentially large thread with every post.
+`get_feed` remains separate because feed browsing and relevance search have
+different filters and ordering.
+
+### Migration from the 13-tool interface
+
+This is a breaking tool-schema change. Refresh/reconnect MCP clients to load
+five tools; old names are removed, not advertised or retained as hidden aliases:
+
+| Old call | New call |
+| --- | --- |
+| `get_me {}` | `get_user {}` |
+| `find_user_by_telegram {telegram_id}` | `get_user {telegram_id}` |
+| `get_user_tags/get_user_badges/get_user_achievements {slug}` | `get_user {slug,include:["tags"/"badges"/"achievements"]}` |
+| `get_post_markdown {post_type,slug}` | `get_post {post_type,slug,format:"markdown"}` |
+| `search_posts {query,…}` | `search {scope:"posts",query,…}` |
+| `search_users {prefix}` | `search {scope:"users",prefix}` |
+| `search_tags {prefix,group}` | `search {scope:"tags",query:prefix,group}` |
+
+`get_user {slug}`, `get_post {post_type,slug}`, `get_feed`, and
+`list_post_comments` retain their default behavior. Consolidation reduces
+repeated schemas/descriptions; section selection and bounded previews also
+avoid returning unnecessary content. No write tools were added.
 
 ## Build and run
 
@@ -201,7 +252,7 @@ Do not create a service user: the unit uses DynamicUser and a persistent
 StateDirectory. Install the binary to /usr/local/bin/vas3k-mcp and
 deploy/vas3k-mcp.service to /etc/systemd/system/vas3k-mcp.service.
 Reload systemd, enable/start vas3k-mcp.service, check status and local GET /,
-and confirm a stateless MCP initialize/tools/list exposes exactly 13 reads.
+and confirm a stateless MCP initialize/tools/list exposes exactly 5 reads.
 Do not call the live club API or configure credentials on my behalf.
 Use this VM's actual name in all URLs and tell me to open
 https://<vm>.exe.xyz/ in my browser to paste the club service token there.

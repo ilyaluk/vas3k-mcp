@@ -57,15 +57,24 @@ func TestAppSetupAndCredentialIsolation(t *testing.T) {
 	}
 	result := rpc("tools/list", map[string]any{})
 	listed := result["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 13 {
+	if len(listed) != 5 {
 		t.Fatalf("%d tools", len(listed))
 	}
+	wantTools := map[string]bool{"get_user": true, "get_post": true, "list_post_comments": true, "get_feed": true, "search": true}
 	for _, tool := range listed {
+		name := tool.(map[string]any)["name"].(string)
+		if !wantTools[name] {
+			t.Fatalf("unexpected/duplicate tool %q", name)
+		}
+		delete(wantTools, name)
 		if tool.(map[string]any)["annotations"].(map[string]any)["readOnlyHint"] != true {
 			t.Fatal("write exposed")
 		}
 	}
-	result = rpc("tools/call", map[string]any{"name": "get_me", "arguments": map[string]any{}})
+	if len(wantTools) != 0 {
+		t.Fatalf("missing tools: %v", wantTools)
+	}
+	result = rpc("tools/call", map[string]any{"name": "get_user", "arguments": map[string]any{}})
 	if !strings.Contains(fmt.Sprint(result), "not configured, open / to set up") || hits.Load() != 0 {
 		t.Fatal("unconfigured call")
 	}
@@ -81,7 +90,7 @@ func TestAppSetupAndCredentialIsolation(t *testing.T) {
 	if resp.StatusCode != 303 || s.Token() != "st_owner" || hits.Load() != 1 {
 		t.Fatalf("setup: status=%d token saved=%v", resp.StatusCode, s.Token() != "")
 	}
-	result = rpc("tools/call", map[string]any{"name": "get_me", "arguments": map[string]any{}})
+	result = rpc("tools/call", map[string]any{"name": "get_user", "arguments": map[string]any{}})
 	if strings.Contains(fmt.Sprint(result), "PRIVATE") || !strings.Contains(fmt.Sprint(result), "owner") {
 		t.Fatalf("allowlist failure: %v", result)
 	}
@@ -89,7 +98,7 @@ func TestAppSetupAndCredentialIsolation(t *testing.T) {
 		t.Fatal("wrong request count")
 	}
 	callerAuthorization = "Basic dXNlcjpDQUxMRVJfVk1fVE9LRU4="
-	result = rpc("tools/call", map[string]any{"name": "get_me", "arguments": map[string]any{}})
+	result = rpc("tools/call", map[string]any{"name": "get_user", "arguments": map[string]any{}})
 	if strings.Contains(fmt.Sprint(result), "CALLER_VM_TOKEN") || hits.Load() != 3 {
 		t.Fatal("Basic proxy credential was used instead of stored club token")
 	}

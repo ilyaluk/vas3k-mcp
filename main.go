@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const version = "0.1.1"
+const version = "0.2.0"
 
 func envDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

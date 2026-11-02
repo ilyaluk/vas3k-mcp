@@ -153,6 +153,67 @@ func TestStateLock(t *testing.T) {
 	next.Close()
 }
 
+// Browser defenses must reject requests before executing a tool. The last two
+// cases also document their limit: these headers are not caller authentication.
+func TestMCPBrowserSecurityBoundary(t *testing.T) {
+	for _, tt := range []struct {
+		name, origin, fetch string
+		want                int
+	}{
+		{"foreign origin", "https://evil.invalid", "", 403},
+		{"null origin", "null", "", 403},
+		{"cross-site iframe navigation", "", "cross-site", 403},
+		{"sibling origin", "https://sibling.exe.xyz", "same-site", 403},
+		{"forged matching origin with cross-site metadata", "https://owner.exe.xyz", "cross-site", 403},
+		{"non-browser without credentials", "", "", 200},
+		{"same-origin browser without app credentials", "https://owner.exe.xyz", "same-origin", 200},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var hits atomic.Int32
+			c := mockClub(t, func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"user":{"slug":"owner","full_name":"Owner"}}`)
+			})
+			s, err := openStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Replace("st_test_owner"); err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest("POST", "https://owner.exe.xyz/mcp", strings.NewReader(
+				`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_user","arguments":{}}}`))
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Accept", "application/json, text/event-stream")
+			if tt.origin != "" {
+				r.Header.Set("Origin", tt.origin)
+			}
+			if tt.fetch != "" {
+				r.Header.Set("Sec-Fetch-Site", tt.fetch)
+			}
+			w := httptest.NewRecorder()
+			appHandler(s, c).ServeHTTP(w, r)
+			if w.Code != tt.want {
+				t.Fatalf("status = %d, want %d", w.Code, tt.want)
+			}
+			wantHits := int32(0)
+			if tt.want == 200 {
+				wantHits = 1
+				if !strings.Contains(w.Body.String(), "Owner") {
+					t.Fatal("expected owner data in successful response")
+				}
+			}
+			if hits.Load() != wantHits {
+				t.Fatalf("upstream calls = %d, want %d", hits.Load(), wantHits)
+			}
+			if w.Header().Get("Access-Control-Allow-Origin") != "" {
+				t.Fatal("unexpected cross-origin read permission")
+			}
+		})
+	}
+}
+
 func TestStateLockRejectsSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(t.TempDir(), "outside-lock")

@@ -5,6 +5,10 @@ MIT licensed; upstream attribution and [LICENSE](LICENSE) are retained.
 Only the Go standard library is used: no third-party modules or transitive
 dependencies. The empty `go.sum` is intentional.
 
+**AI disclosure:** This Go port is entirely vibe-coded with Shelley (AI),
+including the implementation, tests, and documentation. Passing automated
+checks is not a substitute for an independent security review.
+
 ## Scope
 
 `GET /` is the browser setup/status page; `/mcp` is a stateless, hand-written,
